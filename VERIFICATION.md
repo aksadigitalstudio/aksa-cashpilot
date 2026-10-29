@@ -13,6 +13,6 @@ PostgreSQL compiled the actual schema and exercised invoice/payment/bill/transfe
 
 The Edge Function TypeScript syntax and production Vite build passed. Shared browser/server domain rules were synchronized.
 
-**Verification boundaries:** a live Supabase project was not supplied. Hosted Supabase Auth/Edge Function/Storage behavior must receive a deployment-specific acceptance test after configuring credentials. The included browser demo uses IndexedDB and demo identities, not secure shared-user authentication. Shared demo documents are unsigned snapshots; cloud tokens resolve live server records.
+**Live deployment verification, 29 October 2026:** authenticated OWNER login, zero-balance cloud workspace reads, settings writes, private Storage upload, signed-image preview and persistence after refresh passed. Six additional actual Edge-handler regression groups passed. Five deployed HTTP security checks passed. The 22 primary browser groups also passed against the public Vercel demo. Live business records were kept at zero ledger entries; destructive financial integration tests remain isolated. The included browser demo uses IndexedDB and demo identities, not secure shared-user authentication. Shared demo documents are unsigned snapshots; cloud tokens resolve live server records.
 
 Machine-readable results and screenshots are available in test-artifacts/ in the local working folder. Tests use isolated Chrome contexts and do not modify the user's browser preview data.

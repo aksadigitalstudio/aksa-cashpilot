@@ -55,7 +55,7 @@ Demo shared links carry an unsigned, read-only snapshot of **one invoice or rece
 
 ## Supabase backend
 
-The backend adapter is included and its SQL has been exercised with PostgreSQL/PGlite. No Supabase credentials or live project are included; live Auth, Edge Function and Storage integration still require deployment and an environment-specific acceptance test.
+The backend adapter has been deployed and tested with live Supabase Auth, Edge Functions, private Storage and the relational database. See DEPLOYMENT.md for the verified deployment URLs and test boundaries. No privileged credentials are included in this source. The following steps describe installing another dedicated workspace.
 
 Use a **dedicated Supabase project**:
 
