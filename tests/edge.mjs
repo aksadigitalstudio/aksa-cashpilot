@@ -1,0 +1,26 @@
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+import {transform} from 'esbuild';
+import * as domain from '../src/domain.js';
+import {createDemo} from '../src/seed.js';
+const code=(await transform(await readFile('supabase/functions/cashpilot/index.ts','utf8'),{loader:'ts',format:'cjs',target:'es2022'})).code;
+let state=createDemo(),handler,conflict=false;const uploads=[],removals=[],checks=[],user={id:'00000000-0000-4000-8000-000000000001',name:'Edge Test Owner',role:'OWNER'},origin='https://finance.example';
+const admin={auth:{getUser:async token=>token==='test-owner-token'?{data:{user:{id:user.id}}}:{data:{user:null},error:{message:'Invalid token'}}},rpc:async(name,args)=>{
+ if(name==='cashpilot_profile')return{data:user};
+ if(name==='cashpilot_read')return{data:structuredClone(state)};
+ if(name==='cashpilot_commit'){if(conflict){conflict=false;return{error:{message:'WORKSPACE_CONFLICT'}}}assert.equal(args.p_expected,state.revision);state=structuredClone(args.p_state);return{data:null}};
+ throw Error('Unexpected RPC '+name);
+},storage:{from:bucket=>{assert.equal(bucket,'cashpilot-documents');return{upload:async(path,bytes,options)=>{uploads.push({path,size:bytes.length,type:options.contentType});return{}},remove:async paths=>{removals.push(...paths);return{}},createSignedUrl:async path=>({data:{signedUrl:'https://private-storage.example/'+path+'?signed=test-only'}})}}}};
+vm.runInNewContext(code,{require:name=>name.startsWith('npm:')?{createClient:()=>admin}:domain,Deno:{env:{get:key=>key==='CASHPILOT_ALLOWED_ORIGINS'?origin:'test-only'},serve:fn=>handler=fn},console:{error:()=>{}},Response,Request,Uint8Array,Map,Object,JSON,crypto,atob,structuredClone},{timeout:10000});
+const pass=t=>{checks.push(t);console.log('PASS',t)},call=async(body,{authenticated=true,requestOrigin=origin}={})=>{const response=await handler(new Request('https://function.example/cashpilot',{method:'POST',headers:{Origin:requestOrigin,Authorization:authenticated?'Bearer test-owner-token':'Bearer invalid','Content-Type':'application/json'},body:JSON.stringify(body)}));return{status:response.status,body:await response.json()}};
+let response=await call({action:'command',command:{id:domain.uid(),type:'settings.save',data:{...state.settings,logo:{name:'test.png',type:'image/png',data:'data:image/png;base64,aGVsbG8='}}}});
+assert.equal(response.status,200,JSON.stringify(response.body));assert.equal(uploads.length,1);assert.ok(response.body.state.settings.logo.url.startsWith('https://private-storage.example/'));assert.ok(state.settings.logo.data.startsWith('storage:'));assert.equal(state.settings.logo.url,undefined);pass('Command data objects do not break attachment guards; uploads persist private references and return signed previews');
+response=await call({action:'read'});assert.equal(response.status,200);assert.ok(response.body.state.settings.logo.url);assert.equal(state.settings.logo.url,undefined);pass('Read hydration adds signed URLs without mutating stored financial state');
+response=await call({action:'command',command:{id:domain.uid(),type:'settings.save',data:{...response.body.state.settings,logo:{...response.body.state.settings.logo,url:'https://untrusted.example/not-used'}}}});
+assert.equal(response.status,200,JSON.stringify(response.body));assert.equal(uploads.length,1);assert.equal(state.settings.logo.url,undefined);pass('Client preview metadata is stripped while existing private attachments remain valid');
+const before=state.revision,repeatId=domain.uid(),payload={action:'command',command:{id:repeatId,type:'settings.save',data:{...state.settings,logo:null}}};response=await call(payload);assert.equal(response.status,200);assert.equal(state.revision,before+1);response=await call(payload);assert.equal(response.status,200);assert.equal(state.revision,before+1);pass('Authenticated no-cash writes and retried operation IDs are safe');
+conflict=true;response=await call({action:'command',command:{id:domain.uid(),type:'settings.save',data:{...state.settings,logo:{name:'retry.png',type:'image/png',data:'data:image/png;base64,aGVsbG8='}}}});
+assert.equal(response.status,200,JSON.stringify(response.body));assert.equal(uploads.length,3);assert.equal(removals.length,1);pass('Conflict retry removes the abandoned upload and commits exactly once');
+assert.equal((await call({action:'read'},{authenticated:false})).status,401);assert.equal((await call({action:'read'},{requestOrigin:'https://unrelated.example'})).status,403);assert.equal((await call({action:'publicDocument',kind:'invoice',token:domain.uid()},{authenticated:false})).status,404);pass('The actual Edge handler enforces authentication, CORS and opaque document access');
+await mkdir('test-artifacts',{recursive:true});await writeFile('test-artifacts/edge-results.json',JSON.stringify({passed:checks.length,checks},null,2));
